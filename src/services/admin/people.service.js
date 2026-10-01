@@ -1,6 +1,11 @@
 const User = require('../../models/User');
 const Rider = require('../../models/Rider');
-const { ADMIN_SETTABLE, CAN_GO_ONLINE } = require('../../constants/riderVerification');
+const {
+  ADMIN_SETTABLE,
+  ALL_VERIFICATION_STATUSES,
+  CAN_GO_ONLINE,
+  RIDER_VERIFICATION
+} = require('../../constants/riderVerification');
 const Ride = require('../../models/Ride');
 const Payment = require('../../models/Payment');
 const ApiError = require('../../utils/ApiError');
@@ -139,12 +144,49 @@ async function customerDetail(userId) {
 
 // ------------------------------------------------------------------- riders
 
-async function listRiders({ page = 1, limit = 25, search, isOnline, isAvailable, isActive, from, to } = {}) {
+/**
+ * The verification status of a LEAN rider row.
+ *
+ * The list query uses `.lean()` for speed, which returns plain objects with no
+ * virtuals — so `rider.verification` is undefined here even though it works on
+ * the document in `riderDetail`. The fallback has to be repeated by hand, and
+ * it must stay the same fallback: a rider predating verification is
+ * GRANDFATHERED and allowed to work, not PENDING.
+ */
+const leanVerification = (rider) => rider.verificationStatus || RIDER_VERIFICATION.GRANDFATHERED;
+
+async function listRiders({
+  page = 1,
+  limit = 25,
+  search,
+  isOnline,
+  isAvailable,
+  isActive,
+  verificationStatus,
+  from,
+  to
+} = {}) {
   // Rider fields and user fields live in different collections, so a search term
   // is resolved against users first and the ids carried into the rider query.
   const riderFilter = {};
   if (typeof isOnline === 'boolean') riderFilter.isOnline = isOnline;
   if (typeof isAvailable === 'boolean') riderFilter.isAvailable = isAvailable;
+
+  /**
+   * Filtering by status, with the absent case folded in.
+   *
+   * GRANDFATHERED is not a value most of these documents actually carry — it is
+   * what an ABSENT `verificationStatus` means. A plain equality match would
+   * therefore return nothing for the one status that covers every rider
+   * predating the feature, so it matches null as well, which in MongoDB also
+   * matches a missing field. Every other status is stored explicitly.
+   */
+  if (verificationStatus) {
+    riderFilter.verificationStatus =
+      verificationStatus === RIDER_VERIFICATION.GRANDFATHERED
+        ? { $in: [RIDER_VERIFICATION.GRANDFATHERED, null] }
+        : verificationStatus;
+  }
   if (from || to) {
     riderFilter.createdAt = {};
     if (from) riderFilter.createdAt.$gte = from;
@@ -174,6 +216,7 @@ async function listRiders({ page = 1, limit = 25, search, isOnline, isAvailable,
       id: rider._id,
       user: rider.userId,
       vehicle: rider.vehicle,
+      verificationStatus: leanVerification(rider),
       isOnline: rider.isOnline,
       isAvailable: rider.isAvailable,
       activeRideId: rider.activeRideId,
@@ -218,6 +261,21 @@ async function riderDetail(riderId) {
       // Licence number is operationally necessary for a dispute; nothing else
       // about the document is exposed.
       licence: rider.licence ? { number: rider.licence.number } : null,
+
+      /**
+       * Where the rider stands, and who put them there.
+       *
+       * `rider.verification` is the virtual, not the raw column: a rider created
+       * before verification existed has no `verificationStatus` at all, and the
+       * virtual resolves that absence to GRANDFATHERED. Reading the column
+       * directly would send `undefined` and the console would render a rider
+       * who is allowed to work as though nothing were known about them.
+       */
+      verificationStatus: rider.verification,
+      verificationNote: rider.verificationNote,
+      verifiedAt: rider.verifiedAt,
+      verifiedBy: rider.verifiedBy,
+
       isOnline: rider.isOnline,
       isAvailable: rider.isAvailable,
       onlineSince: rider.onlineSince,

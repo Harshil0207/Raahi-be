@@ -3,6 +3,7 @@ const { ALL_SERVICE_TYPES } = require('../constants/services');
 const { objectId } = require('./common.validator');
 const { ALL_ADMIN_ROLES, ALL_PERMISSIONS } = require('../constants/adminRoles');
 const { RIDE_STATUS } = require('../constants/rideStatus');
+const { ALL_VERIFICATION_STATUSES } = require('../constants/riderVerification');
 const { PAYMENT_METHOD, PAYMENT_STATUS } = require('../constants/paymentStatus');
 const { COMPLAINT_STATUS, COMPLAINT_PRIORITY } = require('../constants/complaint');
 const { SETTING_GROUPS } = require('../config/settingsSchema');
@@ -75,7 +76,10 @@ const listRidersQuery = z.object({
   search: z.string().trim().min(1).max(80).optional(),
   isOnline: boolish,
   isAvailable: boolish,
-  isActive: boolish
+  isActive: boolish,
+  // Every status is filterable, including GRANDFATHERED — an admin cannot SET
+  // that one, but they do need to find the riders carrying it.
+  verificationStatus: z.enum(ALL_VERIFICATION_STATUSES).optional()
 });
 
 const listRidesQuery = z.object({
