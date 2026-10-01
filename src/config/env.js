@@ -157,7 +157,16 @@ const env = {
     jwtSecret: process.env.ADMIN_JWT_SECRET || '',
     sessionExpiresIn: process.env.ADMIN_SESSION_EXPIRES_IN || '8h',
     // The admin console runs on its own origin.
-    url: process.env.ADMIN_URL || 'http://localhost:5174',
+    /**
+     * Trimmed and de-slashed, exactly like `frontendUrls` above.
+     *
+     * This value is compared against the browser's `Origin` header, which never
+     * carries a trailing slash. Pasting a URL out of a browser bar or a Vercel
+     * dashboard almost always brings one — `https://example.vercel.app/` — and
+     * the comparison then fails for a reason nothing in the logs explains. The
+     * frontend list has been normalised since it was written; this one was not.
+     */
+    url: (process.env.ADMIN_URL || 'https://raahi-fe-six.vercel.app/').trim().replace(/\/+$/, ''),
     // Used once, by `npm run admin:create`, to bootstrap the first super admin.
     seedEmail: process.env.ADMIN_SEED_EMAIL || '',
     seedPassword: process.env.ADMIN_SEED_PASSWORD || '',
